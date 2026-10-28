@@ -22,7 +22,7 @@ Connect a least-privilege GitHub token and managed Postgres; fetch a bounded pag
 
 ## Local setup for the live sync
 
-1. Create a dedicated demo GitHub repository and a fine-grained token scoped to it with repository **Issues: read** permission.
+1. Create a dedicated demo GitHub repository using the [handoff kit](../../demo-repo-kit/README.md), then create a fine-grained token scoped to it with repository **Issues: read** permission.
 2. Create a Neon Postgres project/database. Apply `db/migrations/0001_phase_01_source_sync.sql` to the intended demo branch using the Neon SQL Editor.
 3. Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPOSITORY`, and a long random `FLOWMEDIC_RUN_TOKEN`. Keep every value server-side and never paste secrets into chat or commit them.
 4. Start the app locally. In Recovery Studio, choose **Run workflow**, enter the operator token into the masked field, and start the sync. The field is cleared when the request finishes.

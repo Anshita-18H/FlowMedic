@@ -51,6 +51,7 @@ docs/                     Architecture, phase plan, decisions, and evidence log
 - [Phase log](docs/PHASE_LOG.md)
 - [Phase 00 implementation record](docs/PHASES/phase-00.md)
 - [Phase 01 implementation record](docs/PHASES/phase-01.md)
+- [Demo GitHub repository handoff kit](demo-repo-kit/README.md)
 - [Changelog](CHANGELOG.md)
 
 At the end of every phase, update its phase record, `docs/PHASE_LOG.md`, and `CHANGELOG.md` before beginning the next phase. Record only checks actually run and results actually observed.
