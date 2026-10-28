@@ -104,9 +104,7 @@ export default function Home() {
             <span className="connection-state">
               <i className="connection-dot" /> No repository connected
             </span>
-            <button className="run-button" type="button" disabled>
-              ▶&nbsp; Run workflow
-            </button>
+            <ManualSyncControl />
           </div>
         </header>
 
@@ -278,3 +276,5 @@ export default function Home() {
     </div>
   );
 }
+import { ManualSyncControl } from "@/components/manual-sync-control";
+

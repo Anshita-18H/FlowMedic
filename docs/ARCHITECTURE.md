@@ -1,6 +1,6 @@
 # FlowMedic Live — Architecture
 
-**Status:** Accepted blueprint; implementation not started.  
+**Status:** Accepted blueprint; Phase 01 integration implementation in progress.  
 **Last reviewed:** 2026-10-28
 
 ## 1. Product goal and demo
@@ -42,8 +42,8 @@ Use the currently supported, pinned Next.js/React/Node versions selected at proj
 ## 4. End-to-end flow
 
 1. An authenticated operator clicks **Run workflow**, or a signed GitHub webhook triggers the same run-creation path. Manual trigger is the required MVP; webhook is optional if time remains. Scheduled polling is optional and must be plan-aware.
-2. The server validates repository configuration and creates a workflow run with a unique idempotency key. It fetches a bounded page of GitHub issues, excluding pull requests unless explicitly desired.
-3. Input is normalized to stable fields (`external_id`, `number`, `title`, `body`, `state`, `html_url`, `updated_at`). The normalized payload is size-limited and secrets/irrelevant personal data are excluded.
+2. The server validates repository configuration and creates a workflow run with the caller's unique idempotency key. The Phase 01 manual route fetches at most two pages of 50 GitHub issues, excluding pull requests.
+3. Input is normalized to stable fields (`external_id`, `number`, `title`, `body`, `state`, `html_url`, `updated_at`). Phase 01 bounds each issue body to 4,000 characters and the whole sync to 100 issues.
 4. Each issue is upserted into the demo destination using a stable key (`source`, `repository`, `external_id`). The initial schema includes `issue_title`.
 5. The demo operator uses a documented, explicit demo-only SQL migration/action to rename `issue_title` to `title`. The application itself must never mutate production schema. A fresh sync then issues an insert/upsert against the old column, producing a real PostgreSQL undefined-column error. Capture SQLSTATE and sanitized statement context, not credentials or unrestricted query text.
 6. The failed step and workflow run are persisted transactionally as an incident with a safe payload snapshot, error fingerprint, attempt count, and status `needs_diagnosis`.

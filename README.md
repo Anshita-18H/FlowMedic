@@ -6,7 +6,7 @@ FlowMedic Live is a Vercel-deployable Next.js application for showing real workf
 
 ## Current status
 
-Phase 00 foundation is **in progress** and recorded in [`docs/PHASES/phase-00.md`](docs/PHASES/phase-00.md). The light Recovery Studio shell, safe health endpoint, project scripts, environment contract, and migration conventions are in place. Formatting, lint, TypeScript, and production build checks passed. The local HTTP response from `/api/health` has not yet been confirmed in this environment. GitHub, Postgres, LLM, authentication, and live step execution are not connected yet.
+Phase 00 foundation is **complete** and recorded in [`docs/PHASES/phase-00.md`](docs/PHASES/phase-00.md). Phase 01 is **in progress**: a bounded GitHub Issues client, Neon upsert path, durable run/step records, protected manual sync endpoint, and Recovery Studio sync control have been added. The Neon migration and service credentials still need setup; no live sync has been verified.
 
 ## Run locally
 
@@ -18,7 +18,7 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000`. The starter environment file contains variable names with blank values. Add real values only to `.env.local` or the deployment provider’s server-side environment settings; never commit credentials. The health endpoint is available at `/api/health` and returns liveness, a coarse setup state, a correlation ID, and a timestamp without returning secret values.
+Open `http://localhost:3000`. The starter environment file contains variable names with blank values. Add real values only to `.env.local` or the deployment provider’s server-side environment settings; never commit credentials. Phase 01 uses `DATABASE_URL`, `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPOSITORY`, and a strong `FLOWMEDIC_RUN_TOKEN`. The health endpoint is available at `/api/health` and returns liveness, coarse configuration flags, a correlation ID, and a timestamp without returning secret values.
 
 ## Useful commands
 
@@ -35,7 +35,10 @@ npm start          Run the production build locally
 ```text
 src/app/                 Next.js App Router pages and Route Handlers
 src/app/api/health/       Safe liveness/configuration endpoint
-db/migrations/            Forward-only SQL migration conventions
+src/app/api/runs/         Protected manual sync endpoint
+src/components/           Recovery Studio sync control
+src/lib/                  Server-only GitHub and Neon integration
+db/migrations/            Forward-only SQL migration conventions and Phase 01 schema
 docs/                     Architecture, phase plan, decisions, and evidence log
 ```
 
@@ -47,6 +50,7 @@ docs/                     Architecture, phase plan, decisions, and evidence log
 - [Light Recovery Studio UI plan](docs/UI_DESIGN.md)
 - [Phase log](docs/PHASE_LOG.md)
 - [Phase 00 implementation record](docs/PHASES/phase-00.md)
+- [Phase 01 implementation record](docs/PHASES/phase-01.md)
 - [Changelog](CHANGELOG.md)
 
 At the end of every phase, update its phase record, `docs/PHASE_LOG.md`, and `CHANGELOG.md` before beginning the next phase. Record only checks actually run and results actually observed.

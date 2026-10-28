@@ -4,8 +4,8 @@ This is the project-wide source of truth for phase status. Update it after every
 
 | Phase | Status | Actual time | Exit evidence | Blockers / next action |
 |---|---|---:|---|---|
-| 00 Foundation | IN PROGRESS | — | Formatting, lint, TypeScript, and Webpack production build passed; see [Phase 00 record](PHASES/phase-00.md). Local HTTP health response remains unconfirmed. | Revisit health-route response when local socket access is available; then assess remaining Phase 00 exit criteria. |
-| 01 Real source-to-destination | NOT STARTED | — | — | — |
+| 00 Foundation | COMPLETE | — | Formatting, lint, TypeScript, and Webpack production build passed; user confirmed local app and health endpoint check. See [Phase 00 record](PHASES/phase-00.md). | — |
+| 01 Real source-to-destination | IN PROGRESS | — | GitHub client, Neon upsert, run endpoint, UI control, and migration scaffold implemented; no live sync verification yet. See [Phase 01 record](PHASES/phase-01.md). | Configure demo services, apply migration, then verify actual and repeat sync. |
 | 02 Workflow + incidents | NOT STARTED | — | — | — |
 | 03 Repair proposal + validation | NOT STARTED | — | — | — |
 | 04 Approval + replay | NOT STARTED | — | — | — |
@@ -21,4 +21,4 @@ This is the project-wide source of truth for phase status. Update it after every
 - **COMPLETE:** all exit criteria met with evidence linked in the phase record.
 - **DEFERRED:** deliberately cut; reason and impact documented.
 
-Planning documents were created on 2026-10-28. Phase 00 implementation has started; no phase is marked complete without its exit evidence.
+Planning documents were created on 2026-10-28. Phase 00 completion includes user-confirmed local health-check evidence; later phases remain unstarted until implementation begins.

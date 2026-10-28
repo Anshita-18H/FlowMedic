@@ -657,6 +657,35 @@ h1 {
   }
 }
 
+.sync-control { position: relative; z-index: 30; }
+.sync-popover {
+  position: absolute; top: calc(100% + 12px); right: 0; width: min(390px, calc(100vw - 32px));
+  padding: 22px; border: 1px solid #dfe6f0; border-radius: 18px; background: #fff;
+  box-shadow: 0 24px 70px rgb(28 45 78 / 18%);
+}
+.sync-popover-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+.sync-popover-head .overline { color: #64748b; font-size: 10px; font-weight: 750; letter-spacing: .13em; }
+.sync-popover-head h2 { margin: 5px 0 0; font-size: 18px; letter-spacing: -.03em; }
+.sync-close { width: 30px; height: 30px; border: 0; border-radius: 9px; color: #637087; background: #f3f6fa; font-size: 21px; cursor: pointer; }
+.sync-connections { display: flex; gap: 8px; margin-bottom: 18px; }
+.sync-connections span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 999px; background: #f5f7fa; color: #68758a; font-size: 11px; font-weight: 650; }
+.sync-connections i { width: 7px; height: 7px; border-radius: 50%; background: #a2adbd; }
+.sync-connections .configured i { background: #168353; box-shadow: 0 0 0 3px #e6f5ed; }
+.sync-connections .missing i { background: #cc8b1e; box-shadow: 0 0 0 3px #fff4db; }
+.sync-token-label { display: block; margin-bottom: 7px; color: #39465b; font-size: 12px; font-weight: 700; }
+.sync-token-input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dce3ee; border-radius: 10px; outline: none; color: #18243a; background: #fbfcfe; font: inherit; font-size: 13px; }
+.sync-token-input:focus { border-color: #4568e8; box-shadow: 0 0 0 3px rgb(69 104 232 / 12%); }
+.sync-hint { margin: 7px 0 15px; color: #748197; font-size: 11px; }
+.sync-submit { width: 100%; min-height: 42px; display: flex; justify-content: center; align-items: center; gap: 9px; border: 0; border-radius: 10px; color: #fff; background: #4568e8; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.sync-submit:disabled { cursor: wait; opacity: .75; }
+.sync-spinner { width: 15px; height: 15px; border: 2px solid rgb(255 255 255 / 40%); border-top-color: #fff; border-radius: 50%; animation: sync-spin .75s linear infinite; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+.sync-progress, .sync-error, .sync-success { margin: 14px 0 0; padding: 11px 12px; border-radius: 11px; font-size: 12px; line-height: 1.5; }
+.sync-progress { color: #435575; background: #f2f6ff; }
+.sync-error { color: #a22e3b; background: #fff0f0; }
+.sync-success { display: grid; gap: 4px; color: #17613f; background: #ecf8f1; }
+.sync-success small { color: #628474; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
+
 @media (max-width: 1120px) {
   .app-frame {
     grid-template-columns: 190px minmax(0, 1fr);

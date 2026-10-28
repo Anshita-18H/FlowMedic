@@ -182,4 +182,4 @@ If behind schedule, preserve legible graph + incident evidence + approval path. 
 
 ## Implementation note
 
-The current Phase 00 page is a light-theme shell with not-connected/ready-to-configure states and loading/error UI. It is not the completed command-center experience described above. The animated workflow, real persisted progress, React Flow interactions, incident inspector, and approval flow remain future work; do not present them as implemented until the relevant phase evidence is recorded.
+The current page is a light-theme shell with loading/error UI. Phase 01 adds a manual sync control with environment-configuration indicators, an in-memory masked operator-token field, request state, and returned fetch/upsert/store counts. Those indicators mean values are configured; they do not prove that the provider is reachable. It is not the completed command-center experience described above. The animated workflow, real-time persisted progress, React Flow interactions, incident inspector, and approval flow remain future work; do not present them as implemented until the relevant phase evidence is recorded.

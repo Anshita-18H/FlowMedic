@@ -1,6 +1,6 @@
 # Phase 01 — Real source-to-destination integration
 
-**Planned time:** 55 minutes · **Status:** NOT STARTED
+**Planned time:** 55 minutes · **Status:** IN PROGRESS
 
 ## Objective
 
@@ -8,17 +8,27 @@ Connect a least-privilege GitHub token and managed Postgres; fetch a bounded pag
 
 ## Checklist
 
-- [ ] Provision dedicated demo repository/database and secrets in local/Vercel settings.
-- [ ] Add versioned migrations for `github_issues` and initial target table with `issue_title`.
-- [ ] Implement server-only GitHub client with timeout, pagination cap, and rate-limit handling.
-- [ ] Exclude pull requests; normalize stable issue fields and bound body length.
-- [ ] Implement parameterized Postgres upsert with unique source/repository/external ID.
-- [ ] Add authenticated manual `POST /api/runs`; persist run/step start and result.
-- [ ] Show connection state and sync result with actual counts.
+- [ ] Provision a dedicated demo repository/database and configure local/Vercel secrets. Use a GitHub fine-grained token with Issues: read permission for only the demo repository.
+- [x] Add versioned migration for `github_issues` and run/step tables; `issue_title` is the intentionally driftable target field. Migration still needs to be applied to Neon.
+- [x] Implement server-only GitHub REST client with an 8-second request timeout, maximum two pages of 50 items, and safe authorization/rate-limit errors.
+- [x] Exclude pull requests; normalize stable issue fields and cap issue body length at 4,000 characters.
+- [x] Implement parameterized Neon Postgres upsert with unique source/repository/external ID.
+- [x] Add token-protected manual `POST /api/runs`, durable run/step checkpoints, idempotency key handling, and post-write count verification.
+- [x] Add Recovery Studio control for configured service flags, manual sync, safe request status, and actual sync counts after completion.
 
 ## Entrance criteria
 
-- Phase 00 complete; credentials available for isolated demo services.
+- Phase 00 complete; demo GitHub/Neon services and credentials are available; migration is applied.
+
+## Local setup for the live sync
+
+1. Create a dedicated demo GitHub repository and a fine-grained token scoped to it with repository **Issues: read** permission.
+2. Create a Neon Postgres project/database. Apply `db/migrations/0001_phase_01_source_sync.sql` to the intended demo branch using the Neon SQL Editor.
+3. Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPOSITORY`, and a long random `FLOWMEDIC_RUN_TOKEN`. Keep every value server-side and never paste secrets into chat or commit them.
+4. Start the app locally. In Recovery Studio, choose **Run workflow**, enter the operator token into the masked field, and start the sync. The field is cleared when the request finishes.
+5. Confirm the returned run ID/counts and verify the rows in Neon. Repeat with a new run and confirm the unique repository/issue key keeps row count stable.
+
+The current token field is a prototype operator gate, not multi-user authentication. It sends the token only in the authorization header over the same-origin request and does not persist it in browser storage. Replace it with a proper authenticated session before broad or public use.
 
 ## Exit criteria
 
@@ -28,11 +38,11 @@ Connect a least-privilege GitHub token and managed Postgres; fetch a bounded pag
 
 ## Completion record
 
-- Status: NOT STARTED
-- Actual start/end/duration: —
-- Implemented: —
-- Deviations and decisions: —
-- Verification: —
-- Evidence: —
-- Blockers / owner / next action: —
-- Known gaps carried forward: —
+- Status: IN PROGRESS
+- Actual start/end/duration: Started 2026-10-28; elapsed time not recorded.
+- Implemented: Server-only GitHub client in `src/lib/github.ts`; Neon persistence in `src/lib/database.ts`; protected manual sync endpoint in `src/app/api/runs/route.ts`; Phase 01 schema in `db/migrations/0001_phase_01_source_sync.sql`; phase setup notes in `db/migrations/README.md`.
+- Deviations and decisions: Manual endpoint uses a dedicated `FLOWMEDIC_RUN_TOKEN` bearer secret until full operator-session authentication is implemented. Each run is bounded to at most 100 GitHub issues; idempotency applies to the caller-provided run key, while issue upserts are independently unique.
+- Verification: Not run in this implementation pass, per the user's request to keep checks lightweight. No GitHub or Neon credentials were supplied, so no external sync or deployed row verification is claimed.
+- Evidence: Code and migration listed above. GitHub fine-grained tokens need Issues: read permission to list repository issues: https://docs.github.com/en/rest/issues/issues. Next.js Route Handlers support the `POST` endpoint pattern: https://nextjs.org/docs/app/getting-started/route-handlers.
+- Blockers / owner / next action: Owner: project operator. Provision/configure demo GitHub and Neon, apply migration, then perform one manual sync and confirm repeat sync does not duplicate rows.
+- Known gaps carried forward: Migration is not yet applied; no GitHub/Neon credentials were available; authentication is a shared operator bearer token rather than a user session; no integration test or live-provider check has been run. UI reports environment configuration, not a verified external connection.
