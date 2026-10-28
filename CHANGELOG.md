@@ -6,6 +6,21 @@ All notable implementation and documentation changes are recorded here. Keep ent
 
 - Created the initial implementation-ready architecture, model-routing guidance, phased plan, and UI design documentation.
 
+### 2026-10-28 — Neon connectivity probe
+
+- **Verified:** A read-only `SELECT 1` reached Neon, but database authentication was rejected. The connection string and raw error details were kept private.
+- **Next action:** Check that `DATABASE_URL` came from the correct Neon project, branch, database, and role, then retry the same read-only query.
+
+### 2026-10-28 — Neon connectivity confirmed
+
+- **Verified:** After the user updated `DATABASE_URL`, the read-only `SELECT 1` probe succeeded. No database writes or schema changes were made.
+- **Next action:** Verify the source sync after the GitHub token and demo repository are ready.
+
+### 2026-10-28 — Demo database schema confirmed
+
+- **Verified:** User-provided Neon SQL Editor screenshot shows all five expected tables: `audit_events`, `github_issues`, `incidents`, `workflow_runs`, and `workflow_steps`.
+- **Known gaps:** The screenshot confirms table presence, not column definitions, sync behavior, or incident capture. GitHub token and live sync remain pending.
+
 ### 2026-10-28 — Phase 02: Incident capture foundation started
 
 - **Added:** Correlation and duration fields, incident/audit schema, schema-drift evidence capture for PostgreSQL `42703`, version-checked incident transition helper, protected incident list/detail APIs, and an isolated demo-only column-rename script.
