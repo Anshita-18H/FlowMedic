@@ -1,6 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { hasValidRunToken } from "@/lib/auth";
 import {
+  captureSchemaDriftIncident,
   createRun,
   finishRun,
   finishStep,
@@ -12,20 +14,11 @@ import { fetchRepositoryIssues, GitHubRequestError } from "@/lib/github";
 
 export const maxDuration = 30;
 
-function errorResponse(message: string, status: number, correlationId: string) {
+function errorResponse(message: string, status: number, correlationId: string, extra?: Record<string, unknown>) {
   return NextResponse.json(
-    { error: { message }, correlationId },
+    { error: { message }, correlationId, ...extra },
     { status, headers: { "Cache-Control": "no-store" } },
   );
-}
-
-function hasValidRunToken(request: Request) {
-  const expected = process.env.FLOWMEDIC_RUN_TOKEN?.trim();
-  const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (!expected || !supplied) return false;
-  const expectedBytes = Buffer.from(expected);
-  const suppliedBytes = Buffer.from(supplied);
-  return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes);
 }
 
 export async function POST(request: Request) {
@@ -52,7 +45,7 @@ export async function POST(request: Request) {
   const repository = `${owner}/${repositoryName}`.toLowerCase();
   let run: Awaited<ReturnType<typeof createRun>>;
   try {
-    run = await createRun(idempotencyKey, repository);
+    run = await createRun(idempotencyKey, repository, correlationId);
   } catch {
     return errorResponse("Could not create a run. Confirm the Phase 01 database migration has been applied.", 503, correlationId);
   }
@@ -65,24 +58,34 @@ export async function POST(request: Request) {
   }
 
   let activeStep = "fetch_issues";
+  let fetchedIssueCount = 0;
+  let issueNumbers: number[] = [];
   try {
-    await startStep(run.id, 1, "fetch_issues");
+    await startStep(run.id, 1, "fetch_issues", correlationId);
     const issues = await fetchRepositoryIssues(owner, repositoryName, token);
-    await finishStep(run.id, "fetch_issues", "succeeded", { fetchedCount: issues.length });
+    fetchedIssueCount = issues.length;
+    issueNumbers = issues.slice(0, 10).map((issue) => issue.number);
+    await finishStep(run.id, "fetch_issues", "succeeded", { fetchedCount: issues.length }, correlationId);
 
     activeStep = "upsert_issues";
-    await startStep(run.id, 2, "upsert_issues");
+    await startStep(run.id, 2, "upsert_issues", correlationId);
     const writtenCount = await upsertIssues(repository, issues);
     const storedCount = await getIssueCount(repository);
-    await finishStep(run.id, "upsert_issues", "succeeded", { writtenCount, storedCount });
-    await finishRun(run.id, "succeeded", `Fetched ${issues.length}; upserted ${writtenCount}; ${storedCount} stored.`);
+    await finishStep(run.id, "upsert_issues", "succeeded", { writtenCount, storedCount }, correlationId);
+    await finishRun(run.id, "succeeded", `Fetched ${issues.length}; upserted ${writtenCount}; ${storedCount} stored.`, correlationId);
 
     return NextResponse.json(
       { runId: run.id, status: "succeeded", fetchedCount: issues.length, upsertedCount: writtenCount, storedCount, repository, correlationId },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    const safeMessage = error instanceof GitHubRequestError
+    const pgCode = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+      ? error.code
+      : "";
+    const schemaDrift = activeStep === "upsert_issues" && pgCode === "42703";
+    let safeMessage = schemaDrift
+      ? "The destination schema is missing the expected issue_title field."
+      : error instanceof GitHubRequestError
       ? error.message
       : error instanceof Error && error.name === "TimeoutError"
         ? "The GitHub request timed out. Retry with a new idempotency key."
@@ -92,12 +95,52 @@ export async function POST(request: Request) {
       : error instanceof Error && error.name === "TimeoutError"
         ? "github_timeout"
         : "sync_failed";
+    let incidentId: string | undefined;
+    let incidentCaptureFailed = false;
     try {
-      await finishStep(run.id, activeStep, "failed", { message: safeMessage }, errorCode);
-      await finishRun(run.id, "failed", safeMessage);
+      await finishStep(
+        run.id,
+        activeStep,
+        "failed",
+        schemaDrift ? { sqlState: "42703", relation: "github_issues", expectedColumn: "issue_title", fetchedIssueCount, sampleIssueNumbers: issueNumbers } : { message: safeMessage },
+        correlationId,
+        schemaDrift ? "42703" : errorCode,
+        schemaDrift ? "schema_drift" : undefined,
+      );
+      if (schemaDrift) {
+        const fingerprint = createHash("sha256")
+          .update(`postgres|${repository}|github_issues|issue_title|42703`)
+          .digest("hex");
+        try {
+          const incident = await captureSchemaDriftIncident({
+            runId: run.id,
+            stepKey: activeStep,
+            repository,
+            correlationId,
+            fingerprint,
+            safeSummary: "Postgres rejected the issue upsert because the expected issue_title column is unavailable.",
+            evidence: {
+              sqlState: "42703",
+              relation: "github_issues",
+              expectedColumn: "issue_title",
+              fetchedIssueCount,
+              sampleIssueNumbers: issueNumbers,
+            },
+          });
+          incidentId = incident.id;
+        } catch {
+          incidentCaptureFailed = true;
+        }
+      }
+      if (incidentCaptureFailed) {
+        safeMessage = "A schema-drift failure was detected, but its incident record could not be persisted.";
+      } else if (schemaDrift && incidentId) {
+        safeMessage = "The destination schema is missing the expected issue_title field. A schema-drift incident was recorded.";
+      }
+      await finishRun(run.id, "failed", safeMessage, correlationId);
     } catch {
       // Preserve the original safe failure response if persistence is unavailable.
     }
-    return errorResponse(safeMessage, 502, correlationId);
+    return errorResponse(safeMessage, 502, correlationId, incidentId ? { incidentId } : undefined);
   }
 }

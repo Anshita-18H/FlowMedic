@@ -6,7 +6,7 @@ FlowMedic Live is a Vercel-deployable Next.js application for showing real workf
 
 ## Current status
 
-Phase 00 foundation is **complete** and recorded in [`docs/PHASES/phase-00.md`](docs/PHASES/phase-00.md). Phase 01 is **in progress**: a bounded GitHub Issues client, Neon upsert path, durable run/step records, protected manual sync endpoint, and Recovery Studio sync control have been added. The Neon migration and service credentials still need setup; no live sync has been verified.
+Phase 00 foundation is **complete** and recorded in [`docs/PHASES/phase-00.md`](docs/PHASES/phase-00.md). Phases 01 and 02 are **in progress**: the GitHub-to-Neon sync path, run/step records, incident/audit capture, protected incident APIs, and Recovery Studio sync control are implemented. The Neon migrations and service credentials still need setup; no live sync or controlled failure has been verified.
 
 ## Run locally
 
@@ -36,9 +36,11 @@ npm start          Run the production build locally
 src/app/                 Next.js App Router pages and Route Handlers
 src/app/api/health/       Safe liveness/configuration endpoint
 src/app/api/runs/         Protected manual sync endpoint
+src/app/api/incidents/    Protected incident list/detail endpoints
 src/components/           Recovery Studio sync control
 src/lib/                  Server-only GitHub and Neon integration
-db/migrations/            Forward-only SQL migration conventions and Phase 01 schema
+db/migrations/            Forward-only SQL migrations for source sync and incident capture
+db/demo/                  Explicit demo-only schema-drift procedure
 docs/                     Architecture, phase plan, decisions, and evidence log
 ```
 
@@ -51,6 +53,7 @@ docs/                     Architecture, phase plan, decisions, and evidence log
 - [Phase log](docs/PHASE_LOG.md)
 - [Phase 00 implementation record](docs/PHASES/phase-00.md)
 - [Phase 01 implementation record](docs/PHASES/phase-01.md)
+- [Phase 02 implementation record](docs/PHASES/phase-02.md)
 - [Demo GitHub repository handoff kit](demo-repo-kit/README.md)
 - [Changelog](CHANGELOG.md)
 

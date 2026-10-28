@@ -9,17 +9,25 @@ function getSql() {
   return neon(connectionString);
 }
 
-export async function createRun(idempotencyKey: string, repository: string) {
+export async function createRun(idempotencyKey: string, repository: string, correlationId: string) {
   const sql = getSql();
-  const inserted = await sql`
-    INSERT INTO workflow_runs (idempotency_key, trigger, repository, status)
-    VALUES (${idempotencyKey}, 'manual', ${repository}, 'running')
-    ON CONFLICT (idempotency_key) DO NOTHING
-    RETURNING id, status
+  const created = await sql`
+    WITH inserted AS (
+      INSERT INTO workflow_runs (idempotency_key, trigger, repository, status, correlation_id)
+      VALUES (${idempotencyKey}, 'manual', ${repository}, 'running', ${correlationId})
+      ON CONFLICT (idempotency_key) DO NOTHING
+      RETURNING id, status, correlation_id
+    ), audited AS (
+      INSERT INTO audit_events (entity_type, entity_id, run_id, correlation_id, action, actor_type, details)
+      SELECT 'run', id, id, correlation_id, 'run_created', 'system', jsonb_build_object('trigger', 'manual')
+      FROM inserted
+      RETURNING id
+    )
+    SELECT id, status FROM inserted
   `;
 
-  if (inserted.length > 0) {
-    return { id: inserted[0].id as string, status: "running" as const, created: true };
+  if (created.length > 0) {
+    return { id: created[0].id as string, status: "running" as const, created: true };
   }
 
   const existing = await sql`
@@ -33,13 +41,28 @@ export async function createRun(idempotencyKey: string, repository: string) {
   };
 }
 
-export async function startStep(runId: string, sequence: number, stepKey: string) {
+export async function startStep(
+  runId: string,
+  sequence: number,
+  stepKey: string,
+  correlationId: string,
+) {
   const sql = getSql();
   await sql`
-    INSERT INTO workflow_steps (run_id, sequence, step_key, status, started_at)
-    VALUES (${runId}, ${sequence}, ${stepKey}, 'running', now())
-    ON CONFLICT (run_id, step_key) DO UPDATE
-      SET status = 'running', started_at = now(), finished_at = NULL, safe_output = NULL
+    WITH changed AS (
+      INSERT INTO workflow_steps (run_id, sequence, step_key, status, started_at, correlation_id)
+      VALUES (${runId}, ${sequence}, ${stepKey}, 'running', now(), ${correlationId})
+      ON CONFLICT (run_id, step_key) DO UPDATE
+        SET status = 'running', started_at = now(), finished_at = NULL, safe_output = NULL,
+            error_code = NULL, error_class = NULL, duration_ms = NULL, correlation_id = EXCLUDED.correlation_id
+      RETURNING id, run_id, step_key, correlation_id
+    ), audited AS (
+      INSERT INTO audit_events (entity_type, entity_id, run_id, correlation_id, action, actor_type, details)
+      SELECT 'step', id, run_id, correlation_id, 'step_started', 'system', jsonb_build_object('stepKey', step_key)
+      FROM changed
+      RETURNING id
+    )
+    SELECT id FROM changed
   `;
 }
 
@@ -48,22 +71,51 @@ export async function finishStep(
   stepKey: string,
   status: "succeeded" | "failed",
   safeOutput: Record<string, unknown>,
+  correlationId: string,
   errorCode?: string,
+  errorClass?: string,
 ) {
   const sql = getSql();
   await sql`
-    UPDATE workflow_steps
-    SET status = ${status}, finished_at = now(), safe_output = ${JSON.stringify(safeOutput)}::jsonb,
-        error_code = ${errorCode ?? null}
-    WHERE run_id = ${runId} AND step_key = ${stepKey}
+    WITH changed AS (
+      UPDATE workflow_steps
+      SET status = ${status}, finished_at = now(),
+          duration_ms = GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::integer),
+          safe_output = ${JSON.stringify(safeOutput)}::jsonb,
+          error_code = ${errorCode ?? null}, error_class = ${errorClass ?? null}
+      WHERE run_id = ${runId} AND step_key = ${stepKey}
+      RETURNING id, run_id, step_key, correlation_id
+    ), audited AS (
+      INSERT INTO audit_events (entity_type, entity_id, run_id, correlation_id, action, actor_type, details)
+      SELECT 'step', id, run_id, ${correlationId}, ${`step_${status}`}, 'system',
+        jsonb_build_object('stepKey', step_key, 'errorCode', ${errorCode ?? null}, 'errorClass', ${errorClass ?? null})
+      FROM changed
+      RETURNING id
+    )
+    SELECT id FROM changed
   `;
 }
 
-export async function finishRun(runId: string, status: "succeeded" | "failed", summary: string) {
+export async function finishRun(
+  runId: string,
+  status: "succeeded" | "failed",
+  summary: string,
+  correlationId: string,
+) {
   const sql = getSql();
   await sql`
-    UPDATE workflow_runs SET status = ${status}, finished_at = now(), summary = ${summary}
-    WHERE id = ${runId}
+    WITH changed AS (
+      UPDATE workflow_runs
+      SET status = ${status}, finished_at = now(), summary = ${summary}
+      WHERE id = ${runId}
+      RETURNING id, correlation_id
+    ), audited AS (
+      INSERT INTO audit_events (entity_type, entity_id, run_id, correlation_id, action, actor_type, details)
+      SELECT 'run', id, id, ${correlationId}, ${`run_${status}`}, 'system', jsonb_build_object('summary', ${summary})
+      FROM changed
+      RETURNING id
+    )
+    SELECT id FROM changed
   `;
 }
 
@@ -114,4 +166,141 @@ export async function getIssueCount(repository: string) {
     WHERE source = 'github' AND repository = ${repository}
   `;
   return Number(result[0]?.issue_count ?? 0);
+}
+
+export async function captureSchemaDriftIncident(input: {
+  runId: string;
+  stepKey: string;
+  repository: string;
+  correlationId: string;
+  fingerprint: string;
+  safeSummary: string;
+  evidence: Record<string, unknown>;
+}) {
+  const sql = getSql();
+  const result = await sql`
+    WITH incident_step AS (
+      SELECT id FROM workflow_steps WHERE run_id = ${input.runId} AND step_key = ${input.stepKey} LIMIT 1
+    ), changed AS (
+      INSERT INTO incidents (
+        run_id, step_id, repository, operation, correlation_id, status, error_code, error_class,
+        fingerprint, safe_summary, evidence
+      )
+      SELECT ${input.runId}, id, ${input.repository}, 'github_issue_upsert', ${input.correlationId}, 'detected',
+        '42703', 'schema_drift', ${input.fingerprint}, ${input.safeSummary},
+        ${JSON.stringify(input.evidence)}::jsonb
+      FROM incident_step
+      ON CONFLICT (run_id, step_id, fingerprint) DO UPDATE
+        SET occurrence_count = incidents.occurrence_count + 1,
+            last_seen_at = now(), updated_at = now()
+      RETURNING id, run_id, correlation_id, version, occurrence_count, (xmax = 0) AS is_new
+    ), linked AS (
+      UPDATE workflow_steps s
+      SET error_class = 'schema_drift', error_code = '42703',
+          safe_output = ${JSON.stringify(input.evidence)}::jsonb
+      FROM changed c
+      WHERE s.run_id = c.run_id AND s.step_key = ${input.stepKey}
+      RETURNING s.id
+    ), audited AS (
+      INSERT INTO audit_events (entity_type, entity_id, run_id, correlation_id, action, actor_type, details)
+      SELECT 'incident', id, run_id, ${input.correlationId},
+        CASE WHEN is_new THEN 'incident_detected' ELSE 'incident_repeated' END,
+        'system', jsonb_build_object('errorCode', '42703', 'fingerprint', ${input.fingerprint}, 'occurrenceCount', occurrence_count)
+      FROM changed
+      RETURNING id
+    )
+    SELECT id, occurrence_count, is_new FROM changed
+  `;
+  if (!result[0]) throw new Error("Could not persist the schema drift incident.");
+  return {
+    id: result[0].id as string,
+    occurrenceCount: Number(result[0].occurrence_count),
+    isNew: Boolean(result[0].is_new),
+  };
+}
+
+export type IncidentStatus =
+  | "detected"
+  | "diagnosing"
+  | "proposal_ready"
+  | "validating"
+  | "awaiting_approval"
+  | "replaying"
+  | "recovered"
+  | "rejected"
+  | "validation_failed"
+  | "replay_failed"
+  | "cancelled";
+
+const allowedTransitions: Record<IncidentStatus, IncidentStatus[]> = {
+  detected: ["diagnosing", "cancelled"],
+  diagnosing: ["proposal_ready", "validation_failed", "cancelled"],
+  proposal_ready: ["validating", "cancelled"],
+  validating: ["awaiting_approval", "validation_failed", "cancelled"],
+  awaiting_approval: ["replaying", "rejected", "cancelled"],
+  replaying: ["recovered", "replay_failed"],
+  recovered: [],
+  rejected: [],
+  validation_failed: [],
+  replay_failed: ["replaying", "cancelled"],
+  cancelled: [],
+};
+
+export async function transitionIncident(input: {
+  incidentId: string;
+  expectedStatus: IncidentStatus;
+  expectedVersion: number;
+  nextStatus: IncidentStatus;
+  correlationId: string;
+  actorType?: "system" | "operator";
+}) {
+  if (!allowedTransitions[input.expectedStatus].includes(input.nextStatus)) {
+    throw new Error(`Illegal incident transition: ${input.expectedStatus} → ${input.nextStatus}.`);
+  }
+
+  const sql = getSql();
+  const result = await sql`
+    WITH changed AS (
+      UPDATE incidents SET status = ${input.nextStatus}, version = version + 1, updated_at = now()
+      WHERE id = ${input.incidentId} AND status = ${input.expectedStatus} AND version = ${input.expectedVersion}
+      RETURNING id, run_id, status, version
+    ), audited AS (
+      INSERT INTO audit_events (entity_type, entity_id, run_id, correlation_id, action, actor_type, details)
+      SELECT 'incident', id, run_id, ${input.correlationId}, 'incident_transition',
+        ${input.actorType ?? "system"},
+        jsonb_build_object('from', ${input.expectedStatus}, 'to', status, 'version', version)
+      FROM changed
+      RETURNING id
+    )
+    SELECT id, status, version FROM changed
+  `;
+  return result[0]
+    ? { updated: true, id: result[0].id as string, status: result[0].status as IncidentStatus, version: Number(result[0].version) }
+    : { updated: false as const };
+}
+
+export async function listIncidents(repository: string, limit: number) {
+  const sql = getSql();
+  return sql`
+    SELECT id, run_id, repository, operation, status, error_code, error_class, fingerprint,
+      safe_summary, occurrence_count, version, first_seen_at, last_seen_at
+    FROM incidents WHERE repository = ${repository}
+    ORDER BY last_seen_at DESC LIMIT ${limit}
+  `;
+}
+
+export async function getIncident(incidentId: string, repository: string) {
+  const sql = getSql();
+  const incidents = await sql`
+    SELECT id, run_id, step_id, repository, operation, status, error_code, error_class,
+      fingerprint, safe_summary, evidence, occurrence_count, version, first_seen_at, last_seen_at
+    FROM incidents WHERE id = ${incidentId} AND repository = ${repository} LIMIT 1
+  `;
+  if (!incidents[0]) return null;
+  const timeline = await sql`
+    SELECT id, correlation_id, action, actor_type, details, created_at
+    FROM audit_events WHERE entity_type = 'incident' AND entity_id = ${incidentId}
+    ORDER BY created_at ASC
+  `;
+  return { ...incidents[0], timeline };
 }

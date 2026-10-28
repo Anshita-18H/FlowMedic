@@ -1,6 +1,6 @@
 # FlowMedic Live — Architecture
 
-**Status:** Accepted blueprint; Phase 01 integration implementation in progress.  
+**Status:** Accepted blueprint; Phase 01/02 implementation in progress.  
 **Last reviewed:** 2026-10-28
 
 ## 1. Product goal and demo
@@ -46,7 +46,7 @@ Use the currently supported, pinned Next.js/React/Node versions selected at proj
 3. Input is normalized to stable fields (`external_id`, `number`, `title`, `body`, `state`, `html_url`, `updated_at`). Phase 01 bounds each issue body to 4,000 characters and the whole sync to 100 issues.
 4. Each issue is upserted into the demo destination using a stable key (`source`, `repository`, `external_id`). The initial schema includes `issue_title`.
 5. The demo operator uses a documented, explicit demo-only SQL migration/action to rename `issue_title` to `title`. The application itself must never mutate production schema. A fresh sync then issues an insert/upsert against the old column, producing a real PostgreSQL undefined-column error. Capture SQLSTATE and sanitized statement context, not credentials or unrestricted query text.
-6. The failed step and workflow run are persisted transactionally as an incident with a safe payload snapshot, error fingerprint, attempt count, and status `needs_diagnosis`.
+6. The failed step, workflow run, and incident are persisted through bounded database statements with a safe payload snapshot, error fingerprint, occurrence count, and status `detected`. Each statement is atomic; the Phase 02 implementation does not claim a multi-statement transaction across the whole sync.
 7. Diagnosis sends only the minimum redacted evidence and known allowlisted schema metadata to the LLM. The response must match a strict schema such as `{diagnosis, mappings:[{sourceField,targetField}], confidence, rationale}`. Store model/provider, prompt version, response, and latency with the incident.
 8. A deterministic validator rejects unknown source fields, unknown target fields, type-incompatible mappings, duplicate targets, unsafe identifiers, and mappings outside the fixed demo allowlist. It cannot turn model text into executable SQL. The server constructs SQL only from trusted identifiers in code and parameterizes values.
 9. A dry-run validation checks the target column exists, payload types fit, and the mapping covers required fields. It does not write or change schema. The UI shows evidence and exact proposed mapping.
